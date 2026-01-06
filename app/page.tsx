@@ -1,65 +1,216 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import { fetchAllSites, getRandomTag } from "@/lib/api";
+import { BooruPost } from "@/lib/types";
+import { PostGrid } from "@/components/post-grid";
+import { PostDialog } from "@/components/post-dialog";
+import { TagList } from "@/components/tag-list";
+import { Header } from "@/components/header";
+import { ProgressiveBlur } from "@/components/progressive-blur";
+import { toast } from "sonner";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 export default function Home() {
+  const [posts, setPosts] = useState<BooruPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedPost, setSelectedPost] = useState<BooruPost | null>(null);
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [isTagsOpen, setIsTagsOpen] = useState(false);
+
+  const observerTarget = useRef(null);
+
+  const handleRandom = useCallback(() => {
+    const tag = getRandomTag();
+    setSearchQuery(tag);
+    setPage(1);
+    toast.success(`Discovery: ${tag.replace(/_/g, " ")}`);
+  }, []);
+
+  const loadPosts = useCallback(
+    async (query: string = "", pageNum: number = 1) => {
+      if (pageNum === 1) setLoading(true);
+      else setLoadingMore(true);
+
+      const results = await fetchAllSites({
+        tags: query,
+        limit: 50,
+        page: pageNum,
+      });
+
+      setPosts((prev) => (pageNum === 1 ? results : [...prev, ...results]));
+
+      if (pageNum === 1) {
+        const tags = Array.from(new Set(results.flatMap((p) => p.tags))).slice(
+          0,
+          50
+        );
+        setAllTags(tags);
+        setLoading(false);
+      } else {
+        setLoadingMore(false);
+      }
+    },
+    []
+  );
+
+  // Initial random tag search on mount
+  useEffect(() => {
+    handleRandom();
+  }, [handleRandom]);
+
+  useEffect(() => {
+    if (searchQuery) {
+      loadPosts(searchQuery, 1);
+    }
+  }, [searchQuery, loadPosts]);
+
+  // Infinite Scroll Observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries[0].isIntersecting &&
+          !loading &&
+          !loadingMore &&
+          posts.length > 0
+        ) {
+          setPage((prev) => {
+            const next = prev + 1;
+            loadPosts(searchQuery, next);
+            return next;
+          });
+        }
+      },
+      { threshold: 1.0 }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+
+    return () => observer.disconnect();
+  }, [loading, loadingMore, posts.length, searchQuery, loadPosts]);
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    setPage(1);
+    toast.info(`Searching for: ${query}`);
+  };
+
+  const handlePostClick = (post: BooruPost) => {
+    setSelectedPost(post);
+  };
+
+  const handleNextPost = () => {
+    if (!selectedPost) return;
+    const currentIndex = posts.findIndex(
+      (p) => p.id === selectedPost.id && p.site === selectedPost.site
+    );
+    if (currentIndex < posts.length - 1) {
+      setSelectedPost(posts[currentIndex + 1]);
+    }
+  };
+
+  const handlePrevPost = () => {
+    if (!selectedPost) return;
+    const currentIndex = posts.findIndex(
+      (p) => p.id === selectedPost.id && p.site === selectedPost.site
+    );
+    if (currentIndex > 0) {
+      setSelectedPost(posts[currentIndex - 1]);
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-black text-yellow-500 font-sans">
+      <Header
+        onSearch={handleSearch}
+        onRandom={handleRandom}
+        currentQuery={searchQuery}
+      />
+
+      <main className="container mx-auto px-4 py-12 space-y-12">
+        {/* WELCOME SECTION */}
+        <section className="text-center space-y-2">
+          <h1 className="text-3xl md:text-5xl font-black tracking-tighter uppercase text-white">
+            Welcome to <span className="text-yellow-500">DANHUB</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-yellow-500/40 uppercase tracking-[0.4em] text-[10px] font-black">
+            Home to all booru's
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        </section>
+
+        {/* TAGS CONTAINER */}
+        <section className="bg-zinc-900/40 border border-yellow-500/20 rounded-[2rem] shadow-2xl overflow-hidden">
+          <Collapsible open={isTagsOpen} onOpenChange={setIsTagsOpen}>
+            <CollapsibleTrigger className="w-full p-8 flex items-center justify-center gap-4 hover:bg-yellow-500/5 transition-colors group">
+              <span className="h-px w-8 bg-yellow-500/20 group-hover:bg-yellow-500/40 transition-colors" />
+              <h3 className="text-[10px] font-black uppercase tracking-[0.5em] text-yellow-500/50 flex items-center gap-2">
+                TAGS SHOWN HERE
+                {isTagsOpen ? (
+                  <ChevronUp className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+              </h3>
+              <span className="h-px w-8 bg-yellow-500/20 group-hover:bg-yellow-500/40 transition-colors" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="px-8 pb-8">
+              <TagList tags={allTags} onTagClick={handleSearch} />
+            </CollapsibleContent>
+          </Collapsible>
+        </section>
+
+        <PostGrid
+          posts={posts}
+          loading={loading}
+          onPostClick={handlePostClick}
+        />
+
+        {/* INFINITE SCROLL TARGET */}
+        <div
+          ref={observerTarget}
+          className="h-20 flex items-center justify-center"
+        >
+          {loadingMore && (
+            <div className="text-yellow-500/50 text-[10px] font-black uppercase tracking-widest animate-pulse">
+              Loading more masterpieces...
+            </div>
+          )}
         </div>
       </main>
+
+      <ProgressiveBlur height="100px" position="bottom" />
+
+      {selectedPost && (
+        <PostDialog
+          post={selectedPost}
+          isOpen={!!selectedPost}
+          onClose={() => setSelectedPost(null)}
+          onNext={handleNextPost}
+          onPrev={handlePrevPost}
+          hasPrev={
+            posts.findIndex(
+              (p) => p.id === selectedPost.id && p.site === selectedPost.site
+            ) > 0
+          }
+          hasNext={
+            posts.findIndex(
+              (p) => p.id === selectedPost.id && p.site === selectedPost.site
+            ) <
+            posts.length - 1
+          }
+        />
+      )}
     </div>
   );
 }
